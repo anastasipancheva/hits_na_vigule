@@ -1,9 +1,14 @@
 package com.unewexp.key_app
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,22 +35,42 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.unewexp.key_app.ui.theme.Key_AppTheme
 import com.unewexp.key_app.ui.theme.Typography
 import org.apache.commons.codec.binary.Base32
 
 class MainActivity : ComponentActivity() {
 
+    private lateinit var requestPermissionLauncher: ActivityResultLauncher<String>
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        requestPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
+            if (!isGranted) {
+                Toast.makeText(this, "Камера необходима для использования приложения", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        checkAndRequestCameraPermission()
 
         setContent {
             Key_AppTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     MainScreen(paddingValues = innerPadding)
                 }
+            }
+        }
+    }
+
+    private fun checkAndRequestCameraPermission() {
+        when {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED -> {
+            }
+            else -> {
+                requestPermissionLauncher.launch(Manifest.permission.CAMERA)
             }
         }
     }
@@ -109,7 +134,9 @@ fun MainScreen(paddingValues: PaddingValues){
             ScanType.ScanQr,
             { it ->
                 dataStore.savePassword("secret", it)
-                isMainScreen = true
+                val secret = dataStore.getPassword("secret")
+                isMainScreen = false
+                isScannerScreen = false
             },
             {
                 isMainScreen = true
@@ -118,9 +145,18 @@ fun MainScreen(paddingValues: PaddingValues){
         )
     }else{
         val secret = dataStore.getPassword("secret")
-        val base32 = Base32()
-        val secretBytes = base32.decode(secret)
+
         if(secret != null){
+            var secretBytes = byteArrayOf()
+            if (
+                secret.indexOf("=") >= 0 &&
+                secret.indexOf("&") >= 0 &&
+                secret.indexOf("=") < secret.indexOf("&")
+                ){
+                val realSecret = secret.substring(secret.indexOf("=") + 1, secret.indexOf("&"))
+                val base32 = Base32()
+                secretBytes = base32.decode(realSecret)
+            }
             TotpScreen(
                 secret = secretBytes
             ) {
