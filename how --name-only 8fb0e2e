@@ -1,0 +1,7 @@
+[33mcommit 8fb0e2ec86985a6482cf20dcfc4e280426ac2b9c[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m
+Author: anastasipancheva <pancheva.nastya@gmail.com>
+Date:   Fri Sep 5 14:55:54 2025 +0700
+
+    контролллер с новой ссылью
+
+app/page.tsx
