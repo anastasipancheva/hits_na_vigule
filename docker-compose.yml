@@ -5,5 +5,9 @@ services:
     build: .
     ports:
       - "8000:8000"
+    volumes:
+      - .:/app
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
     environment:
       - PORT=8000

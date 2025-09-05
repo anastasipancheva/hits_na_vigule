@@ -40,7 +40,7 @@ def test_api():
     # 2. Получение секрета
     print("\n2. Получение TOTP секрета...")
     try:
-        response = requests.get(f"{BASE_URL}/users/test_user/secret")
+        response = requests.get(f"{BASE_URL}/users/secret/test_user")
         if response.status_code == 200:
             secret_data = response.json()
             print(f"✅ Секрет получен для пользователя: {secret_data['username']}")

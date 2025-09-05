@@ -3,42 +3,16 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from ...database import get_db, User
-from ...services.secrets_service import secrets_service, crypto_service
-from ...services.rsa_service import rsa_service
+from ...services.secrets_service import secrets_service
 from ...schemas import (
     UserCreateRequest,
     SaveSecretRequest,
-    EncryptedSecretRequest,
     TotpVerifyRequest,
     TotpVerifyResponse,
     UserResponse,
-    PublicKeyResponse,
 )
 
 router = APIRouter(prefix="/controller")
-
-
-@router.get("/public-key", response_model=PublicKeyResponse)
-async def get_public_key():
-    """Получение публичного RSA-ключа контроллера для шифрования"""
-    try:
-        public_key_pem = rsa_service.get_public_key_pem()
-        return PublicKeyResponse(public_key=public_key_pem)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка получения публичного ключа: {str(e)}")
-
-
-@router.post("/users/encrypted-secret")
-async def save_encrypted_secret(request: EncryptedSecretRequest, db: Session = Depends(get_db)):
-    """Безопасное сохранение секрета, зашифрованного RSA-ключом"""
-    try:
-        success = await secrets_service.save_encrypted_secret(db, request)
-        if success:
-            return {"message": "Секрет безопасно сохранен"}
-        else:
-            raise HTTPException(status_code=500, detail="Ошибка сохранения секрета")
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.post("/users", response_model=UserResponse)
@@ -48,7 +22,6 @@ async def create_user(request: UserCreateRequest, db: Session = Depends(get_db))
         return UserResponse(
             id=user.id,
             username=user.username,
-            user_type=user.user_type,
             secret_expires_at=user.secret_expires_at if hasattr(user, 'secret_expires_at') else None,
             created_at=user.created_at,
             has_secret=bool(user.totp_secret),
@@ -57,20 +30,16 @@ async def create_user(request: UserCreateRequest, db: Session = Depends(get_db))
         raise HTTPException(status_code=400, detail=str(e))
 
 
-# Старый эндпоинт оставляем для обратной совместимости,
-# но в продакшене его следует отключить или защитить дополнительно  
 @router.post("/users/secret")
 async def save_secret(request: SaveSecretRequest, db: Session = Depends(get_db)):
-    """УСТАРЕЛО: Сохранение секрета в открытом виде (только для разработки)"""
-    # Добавляем предупреждение в лог
-    print("⚠️  ВНИМАНИЕ: Используется небезопасный метод передачи секрета!")
     try:
         await secrets_service.save_user_secret(db, request.username, request.secret_plain)
+        # Обновим срок истечения секрета, если передан
         user = db.query(User).filter(User.username == request.username).first()
         if request.secret_expires_at:
             user.secret_expires_at = request.secret_expires_at
             db.commit()
-        return {"message": "Секрет сохранен (небезопасный метод)"}
+        return {"message": "Секрет сохранен"}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -105,7 +74,6 @@ async def list_users(db: Session = Depends(get_db)):
         UserResponse(
             id=user.id,
             username=user.username,
-            user_type=user.user_type,
             secret_expires_at=user.secret_expires_at if hasattr(user, 'secret_expires_at') else None,
             created_at=user.created_at,
             has_secret=bool(user.totp_secret),

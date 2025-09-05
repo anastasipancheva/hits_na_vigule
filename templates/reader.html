@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Контроллер доступа - Считыватель</title>
+    <script src="https://unpkg.com/htmx.org@2.0.0"></script>
+    <!-- Убрали прямую загрузку qr-scanner.min.js -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#2563eb',
+                        secondary: '#64748b',
+                        success: '#16a34a',
+                        danger: '#dc2626',
+                        warning: '#d97706'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Заголовок -->
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">Контроллер доступа</h1>
+            <p class="text-gray-600">Система управления доступом на основе TOTP</p>
+        </div>
+
+        <!-- Основной контейнер -->
+        <div class="max-w-md mx-auto bg-white rounded-xl shadow-lg p-6">
+            <!-- Табы для выбора метода -->
+            <div class="flex border-b border-gray-200 mb-6">
+                <button class="tab-button flex-1 py-2 px-4 text-center font-medium text-gray-600 hover:text-primary data-[active=true]:text-primary data-[active=true]:border-b-2 data-[active=true]:border-primary"
+                        data-tab="manual" data-active="true">
+                    📱 Код вручную
+                </button>
+                <button class="tab-button flex-1 py-2 px-4 text-center font-medium text-gray-600 hover:text-primary data-[active=true]:text-primary data-[active=true]:border-b-2 data-[active=true]:border-primary"
+                        data-tab="qr">
+                    📷 QR-код
+                </button>
+            </div>
+
+            <!-- Контент табов -->
+            <div id="tab-content">
+                <!-- Ручной ввод -->
+                <div id="manual-tab" class="tab-content active">
+                    <form id="manual-form" hx-post="/reader/verify-code" hx-target="#result-container" hx-trigger="submit" hx-indicator="#spinner">
+                        <input type="hidden" name="method" value="manual">
+                        <div class="space-y-4">
+                            <label class="block text-sm font-medium text-gray-700">Введите 6-значный код:</label>
+                            <input type="text" id="code-input" name="code" pattern="[0-9]{6}" maxlength="6" required
+                                   class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent text-center text-2xl font-mono"
+                                   placeholder="123456">
+                            <button type="submit" class="w-full bg-primary text-white py-3 px-4 rounded-lg font-semibold hover:bg-blue-700 transition-colors">
+                                Проверить доступ
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- QR-код -->
+                <div id="qr-tab" class="tab-content hidden">
+                    <div class="space-y-4">
+                        <label class="block text-sm font-medium text-gray-700">Отсканируйте QR-код:</label>
+                        <div class="relative">
+                            <video id="qr-video" class="w-full h-64 bg-gray-200 rounded-lg"></video>
+                            <div id="qr-overlay" class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 rounded-lg">
+                                <div class="text-white text-center">
+                                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-2"></div>
+                                    <p>Загрузка сканера...</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="text-center">
+                            <p class="text-sm text-gray-600 mb-2">Или загрузите изображение с QR-кодом:</p>
+                            <input type="file" id="qr-file" accept="image/*" class="hidden">
+                            <button onclick="document.getElementById('qr-file').click()"
+                                    class="bg-secondary text-white py-2 px-4 rounded-lg text-sm hover:bg-gray-600 transition-colors">
+                                Выбрать файл
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Индикатор загрузки -->
+            <div id="spinner" class="htmx-indicator flex justify-center py-4">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+
+            <!-- Контейнер для результатов -->
+            <div id="result-container" class="mt-6"></div>
+        </div>
+
+        <!-- Статус системы -->
+        <div class="text-center mt-8">
+            <div class="inline-flex items-center px-3 py-1 rounded-full text-sm bg-green-100 text-green-800">
+                <div class="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
+                Система активна
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class AccessReader {
+            constructor() {
+                this.qrScanner = null;
+                this.QrScanner = null;
+                this.init();
+            }
+
+            async init() {
+                console.log('Инициализация считывателя доступа...');
+                this.setupTabs();
+                this.setupFileUpload();
+                this.setupAutoSubmit();
+                this.setupFormPrevention();
+            }
+
+            setupFormPrevention() {
+                // Предотвращаем стандартное поведение формы
+                const form = document.getElementById('manual-form');
+                if (form) {
+                    form.addEventListener('submit', (e) => {
+                        e.preventDefault();
+                        // Отправляем форму через htmx
+                        htmx.trigger(form, 'submit');
+                    });
+                }
+            }
+
+            setupAutoSubmit() {
+                const codeInput = document.getElementById('code-input');
+                if (!codeInput) return;
+
+                codeInput.addEventListener('input', (e) => {
+                    // Оставляем только цифры
+                    e.target.value = e.target.value.replace(/\D/g, '');
+
+                    // Автоматически отправляем форму при вводе 6 цифр
+                    if (e.target.value.length === 6) {
+                        this.submitCode(e.target.value, 'manual');
+                    }
+                });
+            }
+
+            async loadQrScanner() {
+                try {
+                    // Если QR Scanner уже доступен, используем его
+                    if (typeof window.QrScanner !== 'undefined') {
+                        this.QrScanner = window.QrScanner;
+                        console.log('QR Scanner library already loaded.');
+                        const overlay = document.getElementById('qr-overlay');
+                        if (overlay) {
+                            overlay.classList.add('hidden');
+                        }
+                        return;
+                    }
+
+                    // Используем динамический импорт для загрузки модуля
+                    const { default: QrScanner } = await import('https://unpkg.com/qr-scanner@1.4.2/qr-scanner.min.js?module');
+                    this.QrScanner = QrScanner;
+                    console.log('QR Scanner library loaded successfully.');
+
+                    const overlay = document.getElementById('qr-overlay');
+                    if (overlay) {
+                        overlay.classList.add('hidden');
+                    }
+
+                } catch (error) {
+                    console.error('Failed to load QR Scanner:', error);
+                    this.showError('Не удалось загрузить QR сканер. Проверьте подключение к интернету.');
+                    const overlay = document.getElementById('qr-overlay');
+                    if (overlay) {
+                        overlay.innerHTML = `
+                            <div class="text-white text-center">
+                                <div class="text-2xl mb-2">❌</div>
+                                <p>Ошибка загрузки сканера</p>
+                                <p class="text-sm mt-1">Используйте загрузку файлов</p>
+                            </div>
+                        `;
+                    }
+                }
+            }
+
+            setupTabs() {
+                const tabButtons = document.querySelectorAll('.tab-button');
+                tabButtons.forEach(button => {
+                    button.addEventListener('click', (e) => {
+                        const tabName = e.currentTarget.dataset.tab;
+                        this.switchTab(tabName);
+                    });
+                });
+            }
+
+            async switchTab(tabName) {
+                // Обновляем активные кнопки
+                document.querySelectorAll('.tab-button').forEach(btn => {
+                    const isActive = btn.dataset.tab === tabName;
+                    btn.setAttribute('data-active', isActive);
+                });
+
+                // Показываем активный контент
+                document.querySelectorAll('.tab-content').forEach(content => {
+                    const isActive = content.id === `${tabName}-tab`;
+                    content.classList.toggle('hidden', !isActive);
+                    content.classList.toggle('active', isActive);
+                });
+
+                // Останавливаем предыдущие процессы
+                this.stopQRScanner();
+
+                // Запускаем процессы для активного таба
+                if (tabName === 'qr') {
+                    await this.loadQrScanner();
+                    await this.startQRScanner();
+                }
+            }
+
+            async startQRScanner() {
+                try {
+                    const video = document.getElementById('qr-video');
+                    const overlay = document.getElementById('qr-overlay');
+
+                    if (!video || !this.QrScanner) {
+                        this.showError('QR сканер не доступен');
+                        return;
+                    }
+
+                    // Показываем индикатор загрузки
+                    if (overlay) {
+                        overlay.classList.remove('hidden');
+                        overlay.innerHTML = `
+                            <div class="text-white text-center">
+                                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-2"></div>
+                                <p>Запуск камеры...</p>
+                            </div>
+                        `;
+                    }
+
+                    // Инициализируем QR сканер
+                    this.qrScanner = new this.QrScanner(
+                        video,
+                        result => this.handleQRResult(result),
+                        {
+                            onDecodeError: (error) => {
+                                // Игнорируем обычные ошибки "QR code not found"
+                                if (!error.includes('No QR code found')) {
+                                    console.log('QR scanning error:', error);
+                                }
+                            },
+                            highlightScanRegion: true,
+                            highlightCodeOutline: true,
+                        }
+                    );
+
+                    await this.qrScanner.start();
+                    console.log('QR сканер запущен');
+
+                    // Скрываем индикатор загрузки
+                    if (overlay) {
+                        overlay.classList.add('hidden');
+                    }
+
+                } catch (error) {
+                    console.error('Ошибка запуска QR сканера:', error);
+
+                    const overlay = document.getElementById('qr-overlay');
+                    if (overlay) {
+                        overlay.innerHTML = `
+                            <div class="text-white text-center">
+                                <div class="text-2xl mb-2">❌</div>
+                                <p>Ошибка доступа к камере</p>
+                                <p class="text-sm mt-1">Проверьте разрешения или используйте файлы</p>
+                            </div>
+                        `;
+                    }
+
+                    this.showError('Не удалось запустить камеру. Проверьте разрешения.');
+                }
+            }
+
+            stopQRScanner() {
+                if (this.qrScanner) {
+                    this.qrScanner.stop();
+                    this.qrScanner.destroy();
+                    this.qrScanner = null;
+                    console.log('QR сканер остановлен');
+                }
+            }
+
+            handleQRResult(result) {
+                console.log('QR код распознан:', result);
+
+                // Извлекаем только цифры из QR кода
+                const digits = result.data.replace(/\D/g, '');
+
+                if (digits.length === 6) {
+                    this.submitCode(digits, 'qr');
+                    // НЕ останавливаем сканер после отправки, чтобы можно было сканировать снова
+                } else {
+                    this.showError(`QR код содержит не 6 цифр: ${digits}`);
+                    // Не останавливаем сканер при ошибке
+                }
+            }
+
+            setupFileUpload() {
+                const fileInput = document.getElementById('qr-file');
+                if (!fileInput) return;
+
+                fileInput.addEventListener('change', (event) => {
+                    const file = event.target.files[0];
+                    if (file) {
+                        this.scanQRFromFile(file);
+                    }
+                });
+            }
+
+            async scanQRFromFile(file) {
+                try {
+                    const overlay = document.getElementById('qr-overlay');
+                    if (overlay) {
+                        overlay.classList.remove('hidden');
+                        overlay.innerHTML = `
+                            <div class="text-white text-center">
+                                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-2"></div>
+                                <p>Сканирование файла...</p>
+                            </div>
+                        `;
+                    }
+
+                    if (!this.QrScanner) {
+                        await this.loadQrScanner();
+                    }
+
+                    // Создаем URL для файла
+                    const imageUrl = URL.createObjectURL(file);
+
+                    // Сканируем изображение
+                    const result = await this.QrScanner.scanImage(imageUrl);
+
+                    URL.revokeObjectURL(imageUrl); // Очищаем URL
+
+                    if (overlay) {
+                        overlay.classList.add('hidden');
+                    }
+
+                    if (result) {
+                        this.handleQRResult({ data: result });
+                    } else {
+                        this.showError('Не удалось распознать QR код в изображении');
+                    }
+
+                } catch (error) {
+                    console.error('Ошибка сканирования файла:', error);
+
+                    const overlay = document.getElementById('qr-overlay');
+                    if (overlay) {
+                        overlay.classList.add('hidden');
+                    }
+
+                    this.showError('Не удалось распознать QR код: ' + error.message);
+                }
+            }
+
+            submitCode(code, method) {
+                // Показываем индикатор загрузки
+                const spinner = document.getElementById('spinner');
+                if (spinner) {
+                    spinner.classList.remove('htmx-indicator');
+                }
+
+                // Используем htmx для отправки
+                htmx.ajax('POST', '/reader/verify-code', {
+                    values: {
+                        code: code,
+                        method: method
+                    },
+                    target: '#result-container',
+                    swap: 'innerHTML',
+                    onSuccess: () => {
+                        // Очищаем поле ввода после успешной отправки
+                        if (method === 'manual') {
+                            const codeInput = document.getElementById('code-input');
+                            if (codeInput) {
+                                codeInput.value = '';
+                            }
+                        }
+
+                        // Скрываем индикатор загрузки
+                        if (spinner) {
+                            spinner.classList.add('htmx-indicator');
+                        }
+                    },
+                    onError: () => {
+                        // Скрываем индикатор загрузки при ошибке
+                        if (spinner) {
+                            spinner.classList.add('htmx-indicator');
+                        }
+                    }
+                });
+            }
+
+            showError(message) {
+                // Создаем временное сообщение об ошибке
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'p-3 mb-4 bg-red-100 border border-red-400 text-red-700 rounded';
+                errorDiv.textContent = message;
+
+                const container = document.getElementById('result-container');
+                if (container) {
+                    container.prepend(errorDiv);
+                    // Автоудаление через 5 секунд
+                    setTimeout(() => {
+                        if (errorDiv.parentNode) {
+                            errorDiv.parentNode.removeChild(errorDiv);
+                        }
+                    }, 5000);
+                }
+            }
+        }
+
+        // Инициализация при загрузке страницы
+        document.addEventListener('DOMContentLoaded', () => {
+            window.accessReader = new AccessReader();
+        });
+    </script>
+</body>
+</html>

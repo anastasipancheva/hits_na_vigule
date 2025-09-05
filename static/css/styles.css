@@ -1,0 +1,37 @@
+/* Tailwind CSS v4 и кастомные стили */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Кастомные стили для считывателя */
+.access-granted {
+    @apply animate-pulse bg-green-100 border-2 border-green-500;
+}
+
+.access-denied {
+    @apply bg-red-100 border-2 border-red-500;
+}
+
+.recording {
+    @apply animate-pulse bg-red-100 border-2 border-red-500;
+}
+
+.qr-scanning {
+    @apply relative overflow-hidden;
+}
+
+.qr-scanning::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #2563eb, transparent);
+    animation: scan 2s linear infinite;
+}
+
+@keyframes scan {
+    0% { transform: translateY(0); }
+    100% { transform: translateY(100%); }
+}

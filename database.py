@@ -21,7 +21,6 @@ class User(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     username = Column(String, unique=True, nullable=False)
-    user_type = Column(String, nullable=False)  # Тип пользователя: permanent, guest, business_trip
     totp_secret = Column(LargeBinary, nullable=True)  # Зашифрованный секрет (AES-GCM), хранится как bytes
     secret_expires_at = Column(DateTime, nullable=True)  # Дата истечения секрета
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -52,9 +51,6 @@ def _migrate_sqlite_schema():
         # totp_secret не бинарный
         secret_type = name_to_type.get('totp_secret', '')
         if secret_type and 'BLOB' not in secret_type:
-            needs_rebuild = True
-        # Отсутствует поле user_type
-        if 'user_type' not in col_names:
             needs_rebuild = True
 
         if needs_rebuild:

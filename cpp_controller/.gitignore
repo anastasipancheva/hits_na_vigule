@@ -1,0 +1,39 @@
+# Сборка
+build/
+*.exe
+*.o
+*.obj
+*.so
+*.dylib
+*.dll
+*.a
+*.lib
+
+# IDE
+.vscode/
+.vs/
+*.vcxproj
+*.vcxproj.filters
+*.sln
+*.user
+
+# База данных
+*.db
+*.sqlite
+*.sqlite3
+
+# Логи
+*.log
+
+# Временные файлы
+*.tmp
+*.temp
+*~
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
