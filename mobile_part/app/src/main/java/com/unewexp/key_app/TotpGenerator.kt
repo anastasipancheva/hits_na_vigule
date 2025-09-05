@@ -10,6 +10,7 @@ class TotpGenerator() {
         val digits = 6
 
         val currentTime = System.currentTimeMillis() / 1000
+
         val counter = currentTime / timeStep
 
         return generateHotp(secretKey, counter, digits)
