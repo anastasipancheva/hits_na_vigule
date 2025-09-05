@@ -1,78 +1,84 @@
-# Door Controller API
+# Door Controller
+Контроллер реализован в двух вариантах:
+- FastAPI python бэкенд + Web с поддержкой сетевого взаимодействия с панелью администратора для удобства администрирования
+- Полностью автономное C++ CLI приложение под Linux, оптимизированное под легковесные устройства
 
-FastAPI бэкенд + Web интерфейс для контроллера двери с TOTP аутентификацией.
+# 1. FastAPI бэкенд
+
+Путь:
+```
+/controller
+```
 
 ## Функциональность
 
-- Регистрация новых пользователей с указанием срока действия доступа
-- Генерация и выдача TOTP секретов для пользователей
+- Добавление новых пользователей
+- Занесения TOTP секрета в БД
 - Верификация TOTP кодов
 - Управление пользователями и их секретами
 
 ## Установка
 
-Лучше всего через докер:
 ```bash
 docker-compose up --build
 ```
 
-1. Установите зависимости:
+## Документация
+```
+http://locaLhost:8000/docs
+```
+
+## Интерфейс
+```
+http://locaLhost:8000/reader
+```
+
+# 2. C++ CLI приложение
+
+Путь:
+```
+/cpp_controller
+```
+
+## Установка (Linux)
+
+Установка зависимостей
 ```bash
-poetry install
+sudo apt-get update
+sudo apt-get install build-essential cmake libsqlite3-dev libssl-dev pkg-config
 ```
 
-2. Запустите сервер:
+Сборка и запуск
 ```bash
-python run.py
+cd cpp_controller
+./build_linux.sh
+./build/totp_controller
 ```
 
-Или используйте uvicorn напрямую:
-```bash
-uvicorn controller.main:app --reload --host 0.0.0.0 --port 8000
+## Пример работы (Powershell):
+
+```shell
+> create_user testuser
+Пользователь 'testuser' успешно создан
+
+> save_secret testuser JBSWY3DPEHPK3PXP
+Секрет для пользователя 'testuser' успешно сохранен
+
+> verify testuser 123456
+✓ Доступ разрешен
+
+> show_user testuser
+Информация о пользователе:
+  ID: 550e8400-e29b-41d4-a716-446655440000
+  Имя: testuser
+  Секрет установлен: Да
+  Создан: 2025-01-15T10:30:00Z
+
+> quit
+До свидания!
 ```
 
-## API Эндпоинты
-
-### 1. Создание пользователя
-```
-POST /controller/users
-```
-Тело запроса:
-```json
-{
-    "username": "user1",
-    "access_expires_at": "2024-12-31T23:59:59"
-}
-```
-
-### 2. Получение секрета для пользователя
-```
-GET /controller/users/{username}/secret
-```
-
-### 3. Верификация TOTP
-```
-POST /controller/verify
-```
-Тело запроса:
-```json
-{
-    "username": "user1",
-    "totp_code": "123456"
-}
-```
-
-### 4. Сброс секрета пользователя
-```
-DELETE /controller/users/{username}/secret
-```
-
-### 5. Список всех пользователей
-```
-GET /controller/users
-```
-
-## База данных
+# База данных
 
 Используется SQLite база данных `controller.db` с таблицей `users`:
 - `id` - уникальный идентификатор
@@ -80,9 +86,3 @@ GET /controller/users
 - `totp_secret` - секрет для TOTP (может быть NULL)
 - `access_expires_at` - дата окончания действия доступа
 - `created_at` - дата создания пользователя
-
-## Документация API
-
-После запуска сервера документация доступна по адресам:
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
